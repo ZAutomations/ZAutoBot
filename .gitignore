@@ -1,0 +1,10 @@
+node_modules
+out
+dist
+release
+.smoke
+*.log
+.DS_Store
+.vite
+resources/bin/ffmpeg.exe
+resources/bin/ffprobe.exe
