@@ -318,6 +318,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceId: '',
   scriptAiKeys: [],
   scriptAiModel: DEFAULT_SCRIPT_AI_MODEL,
+  pexelsApiKey: '',
   geminiModel: DEFAULT_GEMINI_TTS_MODEL,
   geminiServiceAccountPath: '',
   musicVolume: DEFAULT_MUSIC_VOLUME,

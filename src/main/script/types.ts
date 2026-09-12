@@ -21,6 +21,12 @@ export interface RawParse {
   /** A single narration block to distribute across the scenes. */
   narrationBlob?: string
   moods?: string[]
+  /**
+   * Per-scene visual kind, parallel to `prompts`. A `'footage'` entry means stock video;
+   * absent means the default (a generated image). Sparse by design — consumers read by
+   * index and treat anything missing as the default.
+   */
+  visuals?: Array<'image' | 'footage' | undefined>
   thumbnailPrompt?: string
   layout: string
   warnings: string[]

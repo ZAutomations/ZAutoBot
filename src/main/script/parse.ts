@@ -57,6 +57,22 @@ const IMAGE_LABELS = new Set([
   'broll'
 ])
 
+/**
+ * Labels that mean this scene is stock footage, not a generated image. The line's value is
+ * search terms ("aerial city traffic"), and the scene keeps its slot in the count — the
+ * pipeline downloads a clip instead of generating a picture for it.
+ */
+const FOOTAGE_LABELS = new Set([
+  'footage',
+  'footage prompt',
+  'stock',
+  'stock footage',
+  'stock video',
+  'video',
+  'video clip',
+  'clip'
+])
+
 const MOOD_LABELS = new Set(['mood', 'tone', 'style', 'vibe', 'atmosphere', 'emotion'])
 const TITLE_LABELS = new Set(['title', 'video title', 'name', 'subject'])
 const THUMBNAIL_LABELS = new Set([
@@ -98,11 +114,13 @@ function assemble(raw: RawParse): ParsedScript {
 
   const scenes: ParsedScene[] = []
   for (let index = 0; index < sceneCount; index++) {
+    const visual = raw.visuals?.[index]
     scenes.push({
       sceneNumber: index + 1,
       narration: (narrations[index] ?? '').trim(),
       imagePrompt: (raw.prompts[index] ?? '').trim(),
-      mood: (raw.moods?.[index] ?? '').trim()
+      mood: (raw.moods?.[index] ?? '').trim(),
+      visual: visual === 'footage' ? 'footage' : undefined
     })
   }
 
@@ -139,18 +157,28 @@ function parseJson(text: string): RawParse | null {
   const prompts: string[] = []
   const narrations: string[] = []
   const moods: string[] = []
+  const visuals: Array<'image' | 'footage' | undefined> = []
 
   for (const entry of rawScenes) {
     if (typeof entry === 'string') {
       prompts.push('')
       narrations.push(entry.trim())
       moods.push('')
+      visuals.push(undefined)
       continue
     }
     const scene = (entry ?? {}) as Record<string, unknown>
-    prompts.push(
-      str(scene.imagePrompt ?? scene.image_prompt ?? scene.prompt ?? scene.image ?? scene.visual)
-    )
+    // `"visual": "footage"` is a *kind*, not a prompt — the search terms live in a
+    // footage-named field. Anything else in `visual` stays a prompt, as before.
+    if (str(scene.visual).toLowerCase() === 'footage') {
+      visuals.push('footage')
+      prompts.push(str(scene.footagePrompt ?? scene.footage ?? scene.stock ?? scene.clip))
+    } else {
+      visuals.push(undefined)
+      prompts.push(
+        str(scene.imagePrompt ?? scene.image_prompt ?? scene.prompt ?? scene.image ?? scene.visual)
+      )
+    }
     narrations.push(
       str(scene.narration ?? scene.text ?? scene.script ?? scene.voiceover ?? scene.vo)
     )
@@ -162,6 +190,7 @@ function parseJson(text: string): RawParse | null {
     prompts,
     narrations,
     moods,
+    visuals: visuals.some((v) => v === 'footage') ? visuals : undefined,
     thumbnailPrompt: str(obj.thumbnailPrompt ?? obj.thumbnail_prompt ?? obj.thumbnail) || undefined,
     layout: 'json',
     warnings: []
@@ -184,6 +213,8 @@ interface SceneAccumulator {
   narration: string[]
   image: string[]
   mood: string[]
+  /** Set when any label in this scene named stock footage rather than a generated image. */
+  footage?: boolean
 }
 
 function markerRest(line: string, hasWordMarker: boolean): string | undefined {
@@ -252,6 +283,14 @@ function parseMarked(text: string): RawParse | null {
         field = 'image'
         continue
       }
+      if (FOOTAGE_LABELS.has(label)) {
+        imageLabelsFound++
+        const scene = ensure()
+        if (value) scene.image.push(value)
+        scene.footage = true
+        field = 'image'
+        continue
+      }
       if (MOOD_LABELS.has(label)) {
         if (value) ensure().mood.push(value)
         field = 'mood'
@@ -272,12 +311,15 @@ function parseMarked(text: string): RawParse | null {
   const prompts = accumulators.map((acc) => acc.image.join(' ').trim())
   const narrations = accumulators.map((acc) => acc.narration.join(' ').trim())
   const moods = accumulators.map((acc) => acc.mood.join(' ').trim())
+  const visuals = accumulators.map((acc) => (acc.footage ? 'footage' : undefined))
+  const anyFootage = visuals.some((v) => v === 'footage')
 
   return {
     title,
     prompts,
     narrations,
     moods,
+    visuals: anyFootage ? visuals : undefined,
     thumbnailPrompt: thumbnailPrompt || undefined,
     layout: markersFound ? 'marked scenes' : 'labelled blocks',
     warnings: []
@@ -289,7 +331,7 @@ function parseMarked(text: string): RawParse | null {
 // ---------------------------------------------------------------------------
 
 const ASSET_HEADER =
-  /^\s*#{0,6}\s*(?:\*\*|__)?\s*(ASSET|IMG|IMAGE|PROMPT|VISUAL|PIC|PICTURE|PANEL)\s*#?\s*(\d+)\s*(.*)$/i
+  /^\s*#{0,6}\s*(?:\*\*|__)?\s*(ASSET|IMG|IMAGE|PROMPT|VISUAL|PIC|PICTURE|PANEL|FOOTAGE|STOCK)\s*#?\s*(\d+)\s*(.*)$/i
 
 const RULE_LINE = /^\s*[-=_*~]{3,}\s*$/
 
@@ -313,6 +355,7 @@ function parseAssetBlocks(text: string): RawParse | null {
   const lines = text.split(/\r?\n/)
 
   const prompts: string[] = []
+  const visuals: Array<'image' | 'footage' | undefined> = []
   let buffer: string[] | null = null
   let section: 'prompts' | 'thumbnail' | 'appendix' = 'prompts'
   let thumbnailBuffer: string[] = []
@@ -347,6 +390,7 @@ function parseAssetBlocks(text: string): RawParse | null {
       flush()
       section = 'prompts'
       numbers.push(Number(assetMatch[2]))
+      visuals.push(/^(FOOTAGE|STOCK)$/i.test(assetMatch[1]) ? 'footage' : undefined)
       const inline = headerRemainderIsPrompt(assetMatch[3])
       buffer = inline ? [inline] : []
       continue
@@ -387,6 +431,7 @@ function parseAssetBlocks(text: string): RawParse | null {
     title: '',
     prompts,
     narrationBlob: undefined,
+    visuals: visuals.some((v) => v === 'footage') ? visuals : undefined,
     thumbnailPrompt: thumbnailBuffer.join(' ').trim() || undefined,
     layout: 'asset blocks',
     warnings

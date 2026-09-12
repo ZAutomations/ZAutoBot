@@ -29,6 +29,7 @@ export function SettingsPage(): React.JSX.Element {
   const [providers, setProviders] = useState<ProviderAvailability[]>([])
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
   const [aiKeyDraft, setAiKeyDraft] = useState('')
+  const [pexelsKeyDraft, setPexelsKeyDraft] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   const [testImage, setTestImage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -398,6 +399,54 @@ export function SettingsPage(): React.JSX.Element {
             An alias like <span className="mono">{DEFAULT_SCRIPT_AI_MODEL}</span> survives Google
             retiring pinned model ids; a pinned id breaks silently the day it dies.
           </span>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 className="card__title">Stock footage</h3>
+        <p className="card__hint">
+          A Pexels key lets scripts mix real footage into a video — scenes written as
+          <span className="mono"> Footage: </span> search and download a clip instead of
+          generating an image. Free key at pexels.com/api; clips are licensed for commercial
+          use with no attribution. Stored encrypted, never sent back to this window.
+        </p>
+
+        <div className="field">
+          <label htmlFor="pexels-key">
+            {settings.pexelsApiKey ? 'API key saved — type to replace' : 'API key'}
+          </label>
+          <input
+            id="pexels-key"
+            type="password"
+            style={{ fontFamily: 'monospace' }}
+            value={pexelsKeyDraft}
+            placeholder={settings.pexelsApiKey ? '••••••••  (type to replace)' : 'Pexels API key'}
+            onChange={(event) => setPexelsKeyDraft(event.target.value)}
+          />
+          <div className="row" style={{ marginTop: 10 }}>
+            <button
+              className="btn"
+              disabled={busy || !pexelsKeyDraft.trim()}
+              onClick={() => {
+                patch({ pexelsApiKey: pexelsKeyDraft.trim() })
+                setPexelsKeyDraft('')
+                setNotice('Pexels key saved — encrypted on disk.')
+              }}
+            >
+              Save key
+            </button>
+            {settings.pexelsApiKey ? (
+              <button
+                className="btn"
+                onClick={() => {
+                  patch({ pexelsApiKey: '' })
+                  setNotice('Pexels key removed. Footage scenes will fall back to images.')
+                }}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

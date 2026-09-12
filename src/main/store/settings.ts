@@ -11,7 +11,7 @@ import { fileExists, readJson, readJsonStrict, writeJson } from './jsonStore'
 import { paths } from './paths'
 
 /** Fields that must never be written to disk in the clear. */
-const SECRET_FIELDS = ['azureKey', 'ai33Key', 'fameSpeakKey', 'geminiKey'] as const
+const SECRET_FIELDS = ['azureKey', 'ai33Key', 'fameSpeakKey', 'geminiKey', 'pexelsApiKey'] as const
 type SecretField = (typeof SECRET_FIELDS)[number]
 
 /** Raw on-disk shape: known settings plus their encrypted counterparts. */

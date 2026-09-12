@@ -29,6 +29,14 @@ export interface Scene {
   imagePrompt: string
   mood: string
   /**
+   * What this scene's visual is: a generated image (the default, and the only kind the
+   * first releases knew) or stock footage. When `footage`, the images stage downloads a
+   * clip into `imagePath` — the file just happens to be an .mp4, which keeps every
+   * caching/retry/review rule working unchanged — and the clips stage renders it as video
+   * instead of animating a still.
+   */
+  visual?: 'image' | 'footage'
+  /**
    * Starts as a word-count estimate and is OVERWRITTEN with the measured length of the
    * synthesized audio (ffprobe) once voice exists. Never trust it before the voice stage.
    */
@@ -313,6 +321,8 @@ export interface AppSettings {
   geminiStyle?: string
   /** Folder holding a Kokoro ONNX model. Empty means fetch the standard one. */
   kokoroModelDir?: string
+  /** Pexels key, for scenes marked as stock footage. Free at pexels.com/api. */
+  pexelsApiKey?: string
   musicDir?: string
   musicVolume: number
   loudnessTarget: number
@@ -355,6 +365,8 @@ export interface ParsedScene {
   narration: string
   imagePrompt: string
   mood: string
+  /** Present (and `'footage'`) when the source marked this scene for stock video. */
+  visual?: 'image' | 'footage'
 }
 
 /**

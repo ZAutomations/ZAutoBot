@@ -13,7 +13,8 @@ import {
   RENDER_SHORT_SIDE
 } from '@shared/constants'
 import type { Story } from '@shared/types'
-import { generateSceneImage } from '../images/generate'
+import { generateSceneFootage } from '../footage/generate'
+import { generateSceneImage, type SceneImageResult } from '../images/generate'
 import { getImageProvider } from '../images/registry'
 import { estimateDurationSeconds } from '../script/narration'
 import { getChannel } from '../store/channels'
@@ -142,27 +143,78 @@ export async function runImagesStage(ctx: PipelineContext): Promise<void> {
       return
     }
 
-    const outputPath = assetPath(project.id, 'images', `scene-${sceneSuffix(scene.sceneNumber)}.png`)
+    const imagePathOut = assetPath(
+      project.id,
+      'images',
+      `scene-${sceneSuffix(scene.sceneNumber)}.png`
+    )
+    const footagePathOut = assetPath(
+      project.id,
+      'images',
+      `scene-${sceneSuffix(scene.sceneNumber)}.mp4`
+    )
 
     try {
-      const result = await generateSceneImage(
-        {
-          prompt: scene.imagePrompt,
-          outputPath,
-          index,
-          sourceDir: project.config.imageSourceDir ?? settings.imageSourceDir,
-          mood: scene.mood,
-          isCancelled: () => cancellation.isCancelled
-        },
-        settings,
-        configuredId,
-        (message) => emit.log(project.id, message)
-      )
-      scene.imagePath = result.path
-      if (result.providerId !== configuredId) {
+      let imageResult: SceneImageResult | null = null
+
+      // A footage scene is a search-and-download, not a generation: it has its own lane
+      // with its own failure story. Falling back to image generation keeps the video
+      // alive when Pexels has nothing (or no key was set) — loudly logged, never silent.
+      if (scene.visual === 'footage') {
+        try {
+          scene.imagePath = await generateSceneFootage(
+            {
+              query: scene.imagePrompt,
+              outputPath: footagePathOut,
+              targetHeight: renderSize(project).height,
+              orientation: project.config.orientation,
+              isCancelled: () => cancellation.isCancelled
+            },
+            settings
+          )
+        } catch (err) {
+          if (cancellation.isCancelled) throw err
+          emit.log(
+            project.id,
+            `Scene ${scene.sceneNumber} footage failed (${(err as Error).message}) — generating an image instead.`
+          )
+          imageResult = await generateSceneImage(
+            {
+              prompt: scene.imagePrompt,
+              outputPath: imagePathOut,
+              index,
+              sourceDir: project.config.imageSourceDir ?? settings.imageSourceDir,
+              mood: scene.mood,
+              isCancelled: () => cancellation.isCancelled
+            },
+            settings,
+            configuredId,
+            (message) => emit.log(project.id, message)
+          )
+          scene.imagePath = imageResult.path
+          scene.visual = 'image'
+        }
+      } else {
+        imageResult = await generateSceneImage(
+          {
+            prompt: scene.imagePrompt,
+            outputPath: imagePathOut,
+            index,
+            sourceDir: project.config.imageSourceDir ?? settings.imageSourceDir,
+            mood: scene.mood,
+            isCancelled: () => cancellation.isCancelled
+          },
+          settings,
+          configuredId,
+          (message) => emit.log(project.id, message)
+        )
+        scene.imagePath = imageResult.path
+      }
+
+      if (imageResult && imageResult.providerId !== configuredId) {
         emit.log(
           project.id,
-          `Scene ${scene.sceneNumber} came from ${result.providerId} after ${result.attempts} attempt(s) — the configured provider ${configuredId} failed.`
+          `Scene ${scene.sceneNumber} came from ${imageResult.providerId} after ${imageResult.attempts} attempt(s) — the configured provider ${configuredId} failed.`
         )
       }
       emit.sceneUpdated(project.id, scene)
@@ -395,7 +447,10 @@ export async function runClipsStage(ctx: PipelineContext): Promise<void> {
       cancellation.throwIfCancelled()
 
       const attemptPath = `${outputPath}.attempt${attempt}.mp4`
-      const attemptStyle = attempt === 3 ? 'none' : style
+      // A still frame is a fallback a stock clip does not need — footage has motion of its
+      // own, and attempt 3's job (escape a hanging zoompan) has nothing to escape here.
+      const attemptStyle =
+        scene.visual === 'footage' ? style : attempt === 3 ? 'none' : style
 
       try {
         await renderClip({
@@ -406,6 +461,7 @@ export async function runClipsStage(ctx: PipelineContext): Promise<void> {
           width,
           height,
           outputPath: attemptPath,
+          inputKind: scene.visual === 'footage' ? 'footage' : 'image',
           isCancelled: () => cancellation.isCancelled,
           timeoutMs: attempt === 3 ? 8 * 60 * 1000 : undefined,
           onProgress: (fraction) =>

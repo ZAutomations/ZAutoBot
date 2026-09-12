@@ -17,11 +17,17 @@ export interface RenderClipOptions {
   imagePath: string
   audioPath?: string
   durationSeconds: number
-  /** Resolved motion style — `none` renders a still frame. */
+  /** Resolved motion style — `none` renders a still frame. Ignored for footage. */
   style: string
   width: number
   height: number
   outputPath: string
+  /**
+   * `footage` means `imagePath` is a downloaded stock video, not a picture: it is trimmed
+   * or looped to the narration length and fitted with scale+crop instead of animated with
+   * zoompan — real footage already has motion, and zoompan on video looks like a mistake.
+   */
+  inputKind?: 'image' | 'footage'
   isCancelled?: () => boolean
   onProgress?: (fraction: number) => void
   /** Per-attempt watchdog. The third attempt uses the spec's 8-minute ceiling. */
@@ -37,10 +43,15 @@ export async function renderClip(options: RenderClipOptions): Promise<void> {
     width,
     height,
     outputPath,
+    inputKind,
     isCancelled,
     onProgress,
     timeoutMs
   } = options
+
+  if (inputKind === 'footage') {
+    return renderFootageClip(options)
+  }
 
   const frames = Math.max(1, Math.ceil((durationSeconds + TAIL_PADDING_SECONDS) * MOTION_FPS))
   const filter = buildVideoFilter({ style, frames, width, height })
@@ -89,6 +100,59 @@ export async function renderClip(options: RenderClipOptions): Promise<void> {
     isCancelled,
     timeoutMs,
     label: `clip ${outputPath.split(/[\\/]/).pop()}`
+  })
+}
+
+/**
+ * Render a stock-footage scene: the video is the visual, so there is no zoompan — the work
+ * is making an arbitrary internet clip land on the same timeline contract every other clip
+ * obeys: exactly `duration + tail` seconds, `width×height`, 30fps, yuv420p, h264.
+ *
+ * A clip shorter than the narration loops from the start (`-stream_loop -1`); a longer one
+ * is cut at the timeline length. `-shortest` with the audio present keeps the end tight:
+ * the loop makes video effectively endless, so audio ends the clip. Without audio the
+ * explicit `-t` is the only bound, which is why it is always present.
+ *
+ * Scale-then-crop (not pad): stock footage is real cinematography, and letterboxing it
+ * inside a generated-image frame would look like a slideshow, not a video.
+ */
+async function renderFootageClip(options: RenderClipOptions): Promise<void> {
+  const { imagePath, audioPath, durationSeconds, width, height, outputPath, isCancelled, onProgress, timeoutMs } =
+    options
+
+  const targetSeconds = durationSeconds + TAIL_PADDING_SECONDS
+  const filter = [
+    `scale=${width}:${height}:force_original_aspect_ratio=increase`,
+    `crop=${width}:${height}`,
+    `fps=${MOTION_FPS}`,
+    'format=yuv420p'
+  ].join(',')
+
+  const args: string[] = ['-y', '-stream_loop', '-1', '-i', imagePath]
+
+  // Explicit stream mapping: with two inputs, ffmpeg's default pick for audio can be the
+  // footage's own soundtrack, which would bury the narration.
+  if (audioPath) args.push('-i', audioPath)
+
+  args.push('-t', String(targetSeconds), '-vf', filter)
+
+  if (audioPath) {
+    args.push('-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:a', 'aac', '-b:a', '192k')
+  } else {
+    args.push('-an')
+  }
+
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', outputPath)
+
+  await fs.mkdir(dirname(outputPath), { recursive: true })
+
+  await runFfmpeg({
+    args,
+    totalDurationSeconds: targetSeconds,
+    onProgress: onProgress ? (info) => onProgress(info.fraction) : undefined,
+    isCancelled,
+    timeoutMs,
+    label: `footage clip ${outputPath.split(/[\\/]/).pop()}`
   })
 }
 

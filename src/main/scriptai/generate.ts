@@ -72,6 +72,12 @@ function buildMessages(skillContent: string, title: string): ChatMessage[] {
         'For every scene:\n' +
         'Scene <n>: <short scene label>\nNarration: <what the narrator says>\n' +
         'Image: <a rich, self-contained image-generation prompt>\nMood: <one word>\n\n' +
+        'You may mark a few scenes as stock footage instead — the opener, establishing ' +
+        'shots, transitions, real-world b-roll. For those scenes write this line instead ' +
+        'of the Image line:\n' +
+        'Footage: <2-5 plain stock-search words, e.g. "aerial city traffic night">\n\n' +
+        'Keep Footage to at most a third of the scenes; scenes that tell the story or ' +
+        'show something specific stay as generated images.\n\n' +
         'End with:\nThumbnail: <one image prompt for the cover frame>\n\n' +
         'If your instructions say to work in batches and end a batch with a marker ' +
         '(like SAY CONTINUE), do exactly that — the user will say CONTINUE and you resume ' +

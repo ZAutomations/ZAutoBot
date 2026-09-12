@@ -18,6 +18,7 @@ export function storyFromScript(script: ParsedScript): Story {
     narration: parsed.narration,
     imagePrompt: parsed.imagePrompt,
     mood: parsed.mood,
+    visual: parsed.visual,
     durationSeconds: estimateDurationSeconds(parsed.narration) || MIN_SCENE_SECONDS
   }))
 
