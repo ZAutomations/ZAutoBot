@@ -15,6 +15,7 @@ import {
   runSessionDump
 } from './dev/imageTest'
 import { runScriptAiTest } from './dev/scriptAiTest'
+import { runFootageTest } from './dev/footageTest'
 import { runSmokeTest } from './dev/smoke'
 import { runTtsTest } from './dev/ttsTest'
 import { disconnectChrome } from './images/browser/chrome'
@@ -100,6 +101,11 @@ app.whenReady().then(async () => {
 
   if (process.env['ZBOT_SCRIPTAI']) {
     await runScriptAiTest()
+    return
+  }
+
+  if (process.env['ZBOT_FOOTAGE']) {
+    await runFootageTest()
     return
   }
 
